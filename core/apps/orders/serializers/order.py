@@ -1,3 +1,6 @@
+# stdlib
+import threading
+
 # django
 from django.db import transaction
 from django.core.files.base import ContentFile
@@ -15,6 +18,19 @@ from core.apps.shared.models import Factory
 # services
 from core.services.generate_pdf import generate_order_pdf
 from core.services.send_telegram_msg import send_to_telegram
+
+
+def _send_to_telegram_async(chat_id, order_id):
+    """Telegramga yuborishni fon oqimida bajaradi - HTTP javobni bloklamaydi."""
+    from django.db import close_old_connections
+
+    def _run():
+        try:
+            send_to_telegram(chat_id, order_id)
+        finally:
+            close_old_connections()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 class OrderCreateSerializer(serializers.Serializer):
@@ -63,9 +79,12 @@ class OrderCreateSerializer(serializers.Serializer):
 
             order.save(update_fields=["file"])
 
-            # send to telegram
-
-            send_to_telegram(user.telegram_id, order.id)
+            # send to telegram (transaction commit bo'lgandan keyin, fon oqimida)
+            telegram_id = user.telegram_id
+            order_id = order.id
+            transaction.on_commit(
+                lambda: _send_to_telegram_async(telegram_id, order_id)
+            )
             return order
 
 

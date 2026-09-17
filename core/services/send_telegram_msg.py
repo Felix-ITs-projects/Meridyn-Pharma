@@ -1,4 +1,4 @@
-import os
+import logging
 
 # packages
 import requests
@@ -9,6 +9,12 @@ from django.shortcuts import get_object_or_404
 
 # orders
 from core.apps.orders.models import Order
+
+logger = logging.getLogger(__name__)
+
+# (connect, read) - telegram javob bermay qolsa, so'rov cheksiz osilib qolmasligi uchun
+CONNECT_TIMEOUT = 5
+READ_TIMEOUT = 30
 
 
 def send_to_telegram(chat_id, order_id):
@@ -24,14 +30,17 @@ def send_to_telegram(chat_id, order_id):
                 files = {'document': pdf}
                 data = {'chat_id': chat_id}
 
-                response = requests.post(url, data=data, files=files)
+                response = requests.post(
+                    url, data=data, files=files,
+                    timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                )
 
             return True
 
     except Exception as e:
-        print(f"Telegram xatolik: {e}")
+        logger.warning("Telegram xatolik (order=%s): %s", order_id, e)
         return False
-    
+
 
 def send_message(chat_id, message):
     bot_token = settings.BOT_TOKEN
@@ -42,9 +51,10 @@ def send_message(chat_id, message):
             "chat_id": chat_id,
             "text": message
         }
-        response = requests.post(url, data=data)
-        print(response.json())
+        response = requests.post(
+            url, data=data, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+        )
         return True
     except Exception as e:
-        print(f"Telegram xatosi: {e}")
+        logger.warning("Telegram xatosi (chat_id=%s): %s", chat_id, e)
         return False
